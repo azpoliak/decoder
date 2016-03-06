@@ -3,6 +3,7 @@ import optparse
 import sys, pdb
 import models
 from collections import namedtuple
+import operator
 
 optparser = optparse.OptionParser()
 optparser.add_option("-i", "--input", dest="input", default="data/input", help="File containing sentences to translate (default=data/input)")
@@ -34,7 +35,7 @@ for f in french:
   initial_hypothesis = hypothesis(0.0, lm.begin(), None, None)
   stacks = [{} for _ in f] + [{}]
   stacks[0][lm.begin()] = initial_hypothesis
-  phrase_clauses = {}
+  f_phrases = {}
   for i, stack in enumerate(stacks[:-1]):
     for h in sorted(stack.itervalues(),key=lambda h: -h.logprob)[:opts.s]: # prune
       for j in xrange(i+1,len(f)+1):
@@ -49,13 +50,101 @@ for f in french:
             new_hypothesis = hypothesis(logprob, lm_state, h, phrase)
             if lm_state not in stacks[j] or stacks[j][lm_state].logprob < logprob: # second case is recombination
               stacks[j][lm_state] = new_hypothesis
-              phrase_clauses[i] = j-1
+              f_phrases[i] = j-1
   winner = max(stacks[-1].itervalues(), key=lambda h: h.logprob)
   def extract_english(h): 
     return "" if h.predecessor is None else "%s%s " % (extract_english(h.predecessor), h.phrase.english)
+  #print ' '.join(f)
   print extract_english(winner)
   # dict of all phrases in the english translation that are include more than 1 word
-  phrase_clauses = {key:value for key,value in phrase_clauses.iteritems() if key!=value}
+  #f_phrases = {key:value for key,value in f_phrases.iteritems() if key!=value}
+  e_phrases = {}
+  recur_winner = winner
+  while recur_winner[2] != None:
+    curr_phrase = recur_winner[3].english
+    if curr_phrase not in e_phrases:
+      e_phrases[curr_phrase] = recur_winner[0]
+    else:
+      if e_phrases[curr_phrase] > recur_winner[0]:
+        e_phrases[curr_phrase] = recur_winner[0]
+    recur_winner = recur_winner[2]
+  f_phrases = {f[p[0]:p[1]+1] for p in f_phrases.iteritems()}
+  #print e_phrases
+  #print f_phrases
+
+  e_sent = extract_english(winner).split()
+
+  
+  two_grams = {}
+  for e_phrase in e_phrases:
+    if len(e_phrase.split()) > 1:
+      e_phrase_last = e_phrase.split()[-1]
+    else:
+      e_phrase_last = e_phrase
+    for second in e_phrases:
+      if len(second.split()) > 1:
+        second_first = second.split()[0]
+      else:
+        second_first = second
+      if second != e_phrase:
+        if (e_phrase_last, second_first) in lm.table:
+          if e_phrase not in two_grams:
+            two_grams[e_phrase] = []
+          two_grams[e_phrase].append((second, lm.table[e_phrase_last, second_first].logprob))
+
+  {two_grams[item].sort(key=operator.itemgetter(1)) for item in two_grams}
+
+
+  '''
+  Extracting Phrases from a Word Alignment
+  
+  e_sent = extract_english(winner).split()
+  f_sent = f
+
+  def extract(f_start, f_end, e_start, e_end):
+    if f_end == 0:
+      return
+    for e_word in e_sent:
+        for f_word in f_sent:
+          for match in tm[(f_word,)]:
+            if match.english == e_word:
+              if f_start <= f_sent.index(f_word) and f_sent.index(f_word) and (e_sent.index(e_word) < e_start or e_sent.index(e_word) > e_end):
+                return
+    E = []
+    f_s = f_start
+
+    f_s_unaligned = True
+
+    while f_s_unaligned:
+      f_e = f_end
+      f_e_unaligned =True
+      while f_e_unaligned:
+        E.append((e_sent[e_start:e_end], f_sent[f_s: f_e]))
+        f_e += 1
+        pdb.set_trace()
+      f_s -= 1
+    return E
+
+  BP = []
+  for e_start in range(len(e_sent)):
+    for e_end in xrange(e_start, len(e_sent)):
+      f_start, f_end = len(f_sent), 0
+      for e_word in e_sent:
+        for f_word in f_sent:
+          for match in tm[(f_word,)]:
+            if match.english == e_word:
+              if e_start <= e_sent.index(e_word) and e_sent.index(e_word):
+                f_start = min(f_sent.index(f_word), f_start)
+                f_end = max(f_sent.index(f_word), f_end)
+      BP.append(extract(f_start, f_end, e_start, e_end))
+  '''
+
+
+
+
+
+
+
   #TODO: play with reordering of clauses using LM
 
   if opts.verbose:
@@ -64,3 +153,4 @@ for f in french:
     tm_logprob = extract_tm_logprob(winner)
     sys.stderr.write("LM = %f, TM = %f, Total = %f\n" % 
       (winner.logprob - tm_logprob, tm_logprob, winner.logprob))
+  #pdb.set_trace()
