@@ -4,6 +4,7 @@ import sys, pdb
 import models
 from collections import namedtuple
 import operator
+import math
 
 optparser = optparse.OptionParser()
 optparser.add_option("-i", "--input", dest="input", default="data/input", help="File containing sentences to translate (default=data/input)")
@@ -50,29 +51,25 @@ for f in french:
             new_hypothesis = hypothesis(logprob, lm_state, h, phrase)
             if lm_state not in stacks[j] or stacks[j][lm_state].logprob < logprob: # second case is recombination
               stacks[j][lm_state] = new_hypothesis
-              f_phrases[i] = j-1
+              if j-1 != i:
+                f_phrases[i] = j-1
   winner = max(stacks[-1].itervalues(), key=lambda h: h.logprob)
   def extract_english(h): 
     return "" if h.predecessor is None else "%s%s " % (extract_english(h.predecessor), h.phrase.english)
   #print ' '.join(f)
-  print extract_english(winner)
+  e_sent = extract_english(winner)
   # dict of all phrases in the english translation that are include more than 1 word
   #f_phrases = {key:value for key,value in f_phrases.iteritems() if key!=value}
-  e_phrases = {}
+  e_phrases = []
   recur_winner = winner
   while recur_winner[2] != None:
     curr_phrase = recur_winner[3].english
     if curr_phrase not in e_phrases:
-      e_phrases[curr_phrase] = recur_winner[0]
-    else:
-      if e_phrases[curr_phrase] > recur_winner[0]:
-        e_phrases[curr_phrase] = recur_winner[0]
+      e_phrases.append(curr_phrase)
     recur_winner = recur_winner[2]
-  f_phrases = {f[p[0]:p[1]+1] for p in f_phrases.iteritems()}
+  #f_phrases = {p for p in f_phrases.iteritems()}
   #print e_phrases
   #print f_phrases
-
-  e_sent = extract_english(winner).split()
 
   
   two_grams = {}
@@ -92,8 +89,40 @@ for f in french:
             two_grams[e_phrase] = []
           two_grams[e_phrase].append((second, lm.table[e_phrase_last, second_first].logprob))
 
+  for items in two_grams:
+    for i in range(len(two_grams[items])):
+      new_val = two_grams[items][i][1] * math.fabs(e_phrases.index(items) - e_phrases.index(two_grams[items][i][0]))
+      two_grams[items][i] =  (two_grams[items][i][0] , new_val)
+
   {two_grams[item].sort(key=operator.itemgetter(1)) for item in two_grams}
 
+  output = {}
+
+  stack = []
+
+  for item in two_grams:
+    if len(two_grams[item]) == 1:
+      output[item] = two_grams[item][0][0]
+      stack.append(two_grams[item][0][0])
+      e_phrases.remove(item)
+
+
+
+  pdb.set_trace()
+
+  e_phrases.reverse()
+  '''
+  output = []
+  used = {}
+  for i in range(len(e_phrases)):
+    if e_phrases[i] not in used:
+      output.append(e_phrases[i])
+      used[e_phrases[i]] = 0
+      if e_phrases[i] in two_grams:
+        #determine which goes next
+
+        output.append(two_grams)
+  '''
 
   '''
   Extracting Phrases from a Word Alignment
