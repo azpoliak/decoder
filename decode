@@ -29,7 +29,7 @@ sys.stderr.write("Decoding %s...\n" % (opts.input,))
 for f in french:
   # The following code implements a monotone decoding
   # algorithm (one that doesn't permute the target phrases).
-  # Hence all hypotheses in stacks[i] represent translations of 
+  # Hence all hypotheses in stacks[i] represent translations of
   # the first i words of the input sentence. You should generalize
   # this so that they can represent translations of *any* i words.
   hypothesis = namedtuple("hypothesis", "logprob, lm_state, predecessor, phrase")
@@ -54,7 +54,7 @@ for f in french:
               if j-1 != i:
                 f_phrases[i] = j-1
   winner = max(stacks[-1].itervalues(), key=lambda h: h.logprob)
-  def extract_english(h): 
+  def extract_english(h):
     return "" if h.predecessor is None else "%s%s " % (extract_english(h.predecessor), h.phrase.english)
   #print ' '.join(f)
   e_sent = extract_english(winner)
@@ -71,7 +71,7 @@ for f in french:
   #print e_phrases
   #print f_phrases
 
-  
+
   two_grams = {}
   for e_phrase in e_phrases:
     if len(e_phrase.split()) > 1:
@@ -100,6 +100,35 @@ for f in french:
 
   stack = []
 
+  e_phrases.reverse()
+  tot = 0.
+  for i in range(len(e_phrases) - 1):
+    curr = e_phrases[i]
+
+    if len(curr.split()) > 1:
+        curr = curr.split()[-1]
+    nxt = e_phrases[i+1]
+    if len(nxt.split()) > 1:
+        nxt = nxt.split()[0]
+    if (curr, nxt) in lm.table:
+        tot += lm.table[(curr, nxt)].logprob
+    else:
+        curr = e_phrases[i+1]
+        if len(curr.split()) > 1:
+            curr = curr.split()[-1]
+        nxt = e_phrases[i]
+        if len(nxt.split()) > 1:
+            nxt = nxt.split()[0]
+
+        if (curr, nxt) in lm.table:
+            tot += lm.table[(curr, nxt)].logprob
+            e_phrases[i], e_phrases[i+1] = e_phrases[i+1], e_phrases[i]
+  if tot > winner.logprob:
+      print(' '.join(e_phrases))
+  else:
+      print(e_sents)
+
+
   for item in two_grams:
     if len(two_grams[item]) == 1:
       output[item] = two_grams[item][0][0]
@@ -108,7 +137,6 @@ for f in french:
 
 
 
-  pdb.set_trace()
 
   e_phrases.reverse()
   '''
@@ -126,7 +154,7 @@ for f in french:
 
   '''
   Extracting Phrases from a Word Alignment
-  
+
   e_sent = extract_english(winner).split()
   f_sent = f
 
@@ -180,6 +208,6 @@ for f in french:
     def extract_tm_logprob(h):
       return 0.0 if h.predecessor is None else h.phrase.logprob + extract_tm_logprob(h.predecessor)
     tm_logprob = extract_tm_logprob(winner)
-    sys.stderr.write("LM = %f, TM = %f, Total = %f\n" % 
+    sys.stderr.write("LM = %f, TM = %f, Total = %f\n" %
       (winner.logprob - tm_logprob, tm_logprob, winner.logprob))
   #pdb.set_trace()
