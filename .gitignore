@@ -1,4 +1,5 @@
 data/
+*.pyc
 *.swp
 *.bak
 *.a
