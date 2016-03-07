@@ -9,13 +9,31 @@ import math
 diff_count = 0
 
 optparser = optparse.OptionParser()
-optparser.add_option("-i", "--input", dest="input", default="data/input", help="File containing sentences to translate (default=data/input)")
-optparser.add_option("-t", "--translation-model", dest="tm", default="data/tm", help="File containing translation model (default=data/tm)")
-optparser.add_option("-l", "--language-model", dest="lm", default="data/lm", help="File containing ARPA-format language model (default=data/lm)")
-optparser.add_option("-n", "--num_sentences", dest="num_sents", default=sys.maxint, type="int", help="Number of sentences to decode (default=no limit)")
-optparser.add_option("-k", "--translations-per-phrase", dest="k", default=1, type="int", help="Limit on number of translations to consider per phrase (default=1)")
-optparser.add_option("-s", "--stack-size", dest="s", default=1, type="int", help="Maximum stack size (default=1)")
-optparser.add_option("-v", "--verbose", dest="verbose", action="store_true", default=False,  help="Verbose mode (default=off)")
+optparser.add_option("-i", "--input",
+                     dest="input",
+                     default="data/input",
+                     help="File containing sentences to translate (default=data/input)")
+optparser.add_option("-t", "--translation-model",
+                     dest="tm",
+                     default="data/tm",
+                     help="File containing translation model (default=data/tm)")
+optparser.add_option("-l", "--language-model",
+                     dest="lm",
+                     default="data/lm",
+                     help="File containing ARPA-format language model (default=data/lm)")
+optparser.add_option("-n", "--num_sentences",
+                     dest="num_sents", default=sys.maxint, type="int",
+                     help="Number of sentences to decode (default=no limit)")
+optparser.add_option("-k", "--translations-per-phrase",
+                     dest="k", default=1, type="int",
+                     help="Limit on number of translations to consider per phrase (default=1)")
+optparser.add_option("-s", "--stack-size",
+                     dest="s", default=1, type="int",
+                     help="Maximum stack size (default=1)")
+optparser.add_option("-v", "--verbose",
+                     dest="verbose", action="store_true", default=False,
+                     help="Verbose mode (default=off)")
+
 opts = optparser.parse_args()[0]
 
 tm = models.TM(opts.tm, opts.k)
@@ -51,14 +69,18 @@ for f in french:
                             logprob += word_logprob
                         logprob += lm.end(lm_state) if j == len(f) else 0.0
                         new_hypothesis = hypothesis(logprob, lm_state, h, phrase)
-                        if lm_state not in stacks[j] or stacks[j][lm_state].logprob < logprob: # second case is recombination
+
+                        if lm_state not in stacks[j] or stacks[j][lm_state].logprob < logprob:
+                            # second case is recombination
                             stacks[j][lm_state] = new_hypothesis
                             if j-1 != i:
                                 f_phrases[i] = j-1
+
     winner = max(stacks[-1].itervalues(), key=lambda h: h.logprob)
+
     def extract_english(h):
         return "" if h.predecessor is None else "%s%s " % (extract_english(h.predecessor), h.phrase.english)
-    #print ' '.join(f)
+
     e_sent = extract_english(winner)
     # dict of all phrases in the english translation that are include more than 1 word
     #f_phrases = {key:value for key,value in f_phrases.iteritems() if key!=value}
@@ -66,19 +88,12 @@ for f in french:
     recur_winner = winner
     while recur_winner[2] != None:
         curr_phrase = recur_winner[3].english
-        # if curr_phrase not in e_phrases:
         e_phrases.append(curr_phrase)
         recur_winner = recur_winner[2]
-    #f_phrases = {p for p in f_phrases.iteritems()}
-    #print e_phrases
-    #print f_phrases
 
     e_phrases.reverse()
     tot = 0.
     for i in xrange(1, len(e_phrases) - 1):
-        # if (" ".join(f)).startswith("il se agit de un comi"):
-        #     import pdb; pdb.set_trace()
-
         curr = e_phrases[i]
         prev = e_phrases[i-1]
 
@@ -215,13 +230,6 @@ for f in french:
         BP.append(extract(f_start, f_end, e_start, e_end))
     '''
 
-
-
-
-
-
-
-    #TODO: play with reordering of clauses using LM
 
     if opts.verbose:
         def extract_tm_logprob(h):
