@@ -6,6 +6,8 @@ from collections import namedtuple
 import operator
 import math
 
+diff_count = 0
+
 optparser = optparse.OptionParser()
 optparser.add_option("-i", "--input", dest="input", default="data/input", help="File containing sentences to translate (default=data/input)")
 optparser.add_option("-t", "--translation-model", dest="tm", default="data/tm", help="File containing translation model (default=data/tm)")
@@ -22,179 +24,196 @@ french = [tuple(line.strip().split()) for line in open(opts.input).readlines()[:
 
 # tm should translate unknown words as-is with probability 1
 for word in set(sum(french,())):
-  if (word,) not in tm:
-    tm[(word,)] = [models.phrase(word, 0.0)]
+    if (word,) not in tm:
+        tm[(word,)] = [models.phrase(word, 0.0)]
 
 sys.stderr.write("Decoding %s...\n" % (opts.input,))
 for f in french:
-  # The following code implements a monotone decoding
-  # algorithm (one that doesn't permute the target phrases).
-  # Hence all hypotheses in stacks[i] represent translations of
-  # the first i words of the input sentence. You should generalize
-  # this so that they can represent translations of *any* i words.
-  hypothesis = namedtuple("hypothesis", "logprob, lm_state, predecessor, phrase")
-  initial_hypothesis = hypothesis(0.0, lm.begin(), None, None)
-  stacks = [{} for _ in f] + [{}]
-  stacks[0][lm.begin()] = initial_hypothesis
-  f_phrases = {}
-  for i, stack in enumerate(stacks[:-1]):
-    for h in sorted(stack.itervalues(),key=lambda h: -h.logprob)[:opts.s]: # prune
-      for j in xrange(i+1,len(f)+1):
-        if f[i:j] in tm:
-          for phrase in tm[f[i:j]]:
-            logprob = h.logprob + phrase.logprob
-            lm_state = h.lm_state
-            for word in phrase.english.split():
-              (lm_state, word_logprob) = lm.score(lm_state, word)
-              logprob += word_logprob
-            logprob += lm.end(lm_state) if j == len(f) else 0.0
-            new_hypothesis = hypothesis(logprob, lm_state, h, phrase)
-            if lm_state not in stacks[j] or stacks[j][lm_state].logprob < logprob: # second case is recombination
-              stacks[j][lm_state] = new_hypothesis
-              if j-1 != i:
-                f_phrases[i] = j-1
-  winner = max(stacks[-1].itervalues(), key=lambda h: h.logprob)
-  def extract_english(h):
-    return "" if h.predecessor is None else "%s%s " % (extract_english(h.predecessor), h.phrase.english)
-  #print ' '.join(f)
-  e_sent = extract_english(winner)
-  # dict of all phrases in the english translation that are include more than 1 word
-  #f_phrases = {key:value for key,value in f_phrases.iteritems() if key!=value}
-  e_phrases = []
-  recur_winner = winner
-  while recur_winner[2] != None:
-    curr_phrase = recur_winner[3].english
-    if curr_phrase not in e_phrases:
-      e_phrases.append(curr_phrase)
-    recur_winner = recur_winner[2]
-  #f_phrases = {p for p in f_phrases.iteritems()}
-  #print e_phrases
-  #print f_phrases
+    # The following code implements a monotone decoding
+    # algorithm (one that doesn't permute the target phrases).
+    # Hence all hypotheses in stacks[i] represent translations of
+    # the first i words of the input sentence. You should generalize
+    # this so that they can represent translations of *any* i words.
+    hypothesis = namedtuple("hypothesis", "logprob, lm_state, predecessor, phrase")
+    initial_hypothesis = hypothesis(0.0, lm.begin(), None, None)
+    stacks = [{} for _ in f] + [{}]
+    stacks[0][lm.begin()] = initial_hypothesis
+    f_phrases = {}
+    for i, stack in enumerate(stacks[:-1]):
+        for h in sorted(stack.itervalues(),key=lambda h: -h.logprob)[:opts.s]: # prune
+            for j in xrange(i+1,len(f)+1):
+                if f[i:j] in tm:
+                    for phrase in tm[f[i:j]]:
+                        logprob = h.logprob + phrase.logprob
+                        lm_state = h.lm_state
+                        for word in phrase.english.split():
+                            (lm_state, word_logprob) = lm.score(lm_state, word)
+                            logprob += word_logprob
+                        logprob += lm.end(lm_state) if j == len(f) else 0.0
+                        new_hypothesis = hypothesis(logprob, lm_state, h, phrase)
+                        if lm_state not in stacks[j] or stacks[j][lm_state].logprob < logprob: # second case is recombination
+                            stacks[j][lm_state] = new_hypothesis
+                            if j-1 != i:
+                                f_phrases[i] = j-1
+    winner = max(stacks[-1].itervalues(), key=lambda h: h.logprob)
+    def extract_english(h):
+        return "" if h.predecessor is None else "%s%s " % (extract_english(h.predecessor), h.phrase.english)
+    #print ' '.join(f)
+    e_sent = extract_english(winner)
+    # dict of all phrases in the english translation that are include more than 1 word
+    #f_phrases = {key:value for key,value in f_phrases.iteritems() if key!=value}
+    e_phrases = []
+    recur_winner = winner
+    while recur_winner[2] != None:
+        curr_phrase = recur_winner[3].english
+        # if curr_phrase not in e_phrases:
+        e_phrases.append(curr_phrase)
+        recur_winner = recur_winner[2]
+    #f_phrases = {p for p in f_phrases.iteritems()}
+    #print e_phrases
+    #print f_phrases
 
+    e_phrases.reverse()
+    tot = 0.
+    for i in xrange(1, len(e_phrases) - 1):
+        # if (" ".join(f)).startswith("il se agit de un comi"):
+        #     import pdb; pdb.set_trace()
 
-  two_grams = {}
-  for e_phrase in e_phrases:
-    if len(e_phrase.split()) > 1:
-      e_phrase_last = e_phrase.split()[-1]
-    else:
-      e_phrase_last = e_phrase
-    for second in e_phrases:
-      if len(second.split()) > 1:
-        second_first = second.split()[0]
-      else:
-        second_first = second
-      if second != e_phrase:
-        if (e_phrase_last, second_first) in lm.table:
-          if e_phrase not in two_grams:
-            two_grams[e_phrase] = []
-          two_grams[e_phrase].append((second, lm.table[e_phrase_last, second_first].logprob))
+        curr = e_phrases[i]
+        prev = e_phrases[i-1]
 
-  for items in two_grams:
-    for i in range(len(two_grams[items])):
-      new_val = two_grams[items][i][1] * math.fabs(e_phrases.index(items) - e_phrases.index(two_grams[items][i][0]))
-      two_grams[items][i] =  (two_grams[items][i][0] , new_val)
-
-  {two_grams[item].sort(key=operator.itemgetter(1)) for item in two_grams}
-
-  output = {}
-
-  stack = []
-
-  e_phrases.reverse()
-  tot = 0.
-  for i in range(len(e_phrases) - 1):
-    curr = e_phrases[i]
-
-    if len(curr.split()) > 1:
-        curr = curr.split()[-1]
-    nxt = e_phrases[i+1]
-    if len(nxt.split()) > 1:
-        nxt = nxt.split()[0]
-    if (curr, nxt) in lm.table:
-        tot += lm.table[(curr, nxt)].logprob
-    else:
-        curr = e_phrases[i+1]
         if len(curr.split()) > 1:
             curr = curr.split()[-1]
-        nxt = e_phrases[i]
+        nxt = e_phrases[i+1]
         if len(nxt.split()) > 1:
             nxt = nxt.split()[0]
-
-        if (curr, nxt) in lm.table:
+        if (curr, nxt) in lm.table and (prev, curr) in lm.table:
             tot += lm.table[(curr, nxt)].logprob
-            e_phrases[i], e_phrases[i+1] = e_phrases[i+1], e_phrases[i]
-  if tot > winner.logprob:
-      print(' '.join(e_phrases))
-  else:
-      print(e_sents)
+        else:
+            curr = e_phrases[i+1]
+            if len(curr.split()) > 1:
+                curr = curr.split()[-1]
+            nxt = e_phrases[i]
+            if len(nxt.split()) > 1:
+                nxt = nxt.split()[0]
+
+            if (curr, nxt) in lm.table and (prev, curr) in lm.table:
+                tot += lm.table[(curr, nxt)].logprob
+                e_phrases[i], e_phrases[i+1] = e_phrases[i+1], e_phrases[i]
+    if tot > winner.logprob:
+        print(' '.join(e_phrases))
+    else:
+        print(e_sent)
+
+    if ' '.join(e_phrases).strip() != e_sent.strip():
+        diff_count += 1
+
+    '''
+
+    two_grams = {}
+    for e_phrase in e_phrases:
+        if len(e_phrase.split()) > 1:
+            e_phrase_last = e_phrase.split()[-1]
+        else:
+            e_phrase_last = e_phrase
+        for second in e_phrases:
+            if len(second.split()) > 1:
+                second_first = second.split()[0]
+            else:
+                second_first = second
+            if second != e_phrase:
+                if (e_phrase_last, second_first) in lm.table:
+                    if e_phrase not in two_grams:
+                        two_grams[e_phrase] = []
+                    two_grams[e_phrase].append((second, lm.table[e_phrase_last, second_first].logprob))
+
+    for items in two_grams:
+        for i in range(len(two_grams[items])):
+            new_val = two_grams[items][i][1] * math.fabs(e_phrases.index(items) - e_phrases.index(two_grams[items][i][0]))
+            two_grams[items][i] =  (two_grams[items][i][0] , new_val)
+
+    {two_grams[item].sort(key=operator.itemgetter(1)) for item in two_grams}
 
 
-  for item in two_grams:
-    if len(two_grams[item]) == 1:
-      output[item] = two_grams[item][0][0]
-      stack.append(two_grams[item][0][0])
-      e_phrases.remove(item)
 
+    phrase_alignments = {}
+    for fp in f_phrases.iteritems():
+        if f[fp[0]:fp[1]+1] in tm:
+            best_logprob = -sys.maxint - 1
+            for phrase in tm[f[fp[0]:fp[1]+1]]:
+                ep = phrase.english
+                curr_log = phrase.logprob
+                if ep in e_phrases:
+                    if curr_log > best_logprob:
+                        best_logprob = curr_log
+                        phrase_alignments[f[fp[0]:fp[1]+1]] = ep
 
+    output = {}
+    stack = []
 
+    for item in two_grams:
+        if len(two_grams[item]) == 1:
+            output[item] = two_grams[item][0][0]
+            stack.append(two_grams[item][0][0])
+            e_phrases.remove(item)
 
-  e_phrases.reverse()
-  '''
-  output = []
-  used = {}
-  for i in range(len(e_phrases)):
-    if e_phrases[i] not in used:
-      output.append(e_phrases[i])
-      used[e_phrases[i]] = 0
-      if e_phrases[i] in two_grams:
-        #determine which goes next
+    e_phrases.reverse()
 
-        output.append(two_grams)
-  '''
+    output = []
+    used = {}
+    for i in range(len(e_phrases)):
+      if e_phrases[i] not in used:
+        output.append(e_phrases[i])
+        used[e_phrases[i]] = 0
+        if e_phrases[i] in two_grams:
+          #determine which goes next
 
-  '''
-  Extracting Phrases from a Word Alignment
+          output.append(two_grams)
+    '''
 
-  e_sent = extract_english(winner).split()
-  f_sent = f
+    '''
+    Extracting Phrases from a Word Alignment
 
-  def extract(f_start, f_end, e_start, e_end):
-    if f_end == 0:
-      return
-    for e_word in e_sent:
-        for f_word in f_sent:
-          for match in tm[(f_word,)]:
-            if match.english == e_word:
-              if f_start <= f_sent.index(f_word) and f_sent.index(f_word) and (e_sent.index(e_word) < e_start or e_sent.index(e_word) > e_end):
-                return
-    E = []
-    f_s = f_start
+    e_sent = extract_english(winner).split()
+    f_sent = f
 
-    f_s_unaligned = True
-
-    while f_s_unaligned:
-      f_e = f_end
-      f_e_unaligned =True
-      while f_e_unaligned:
-        E.append((e_sent[e_start:e_end], f_sent[f_s: f_e]))
-        f_e += 1
-        pdb.set_trace()
-      f_s -= 1
-    return E
-
-  BP = []
-  for e_start in range(len(e_sent)):
-    for e_end in xrange(e_start, len(e_sent)):
-      f_start, f_end = len(f_sent), 0
+    def extract(f_start, f_end, e_start, e_end):
+      if f_end == 0:
+        return
       for e_word in e_sent:
-        for f_word in f_sent:
-          for match in tm[(f_word,)]:
-            if match.english == e_word:
-              if e_start <= e_sent.index(e_word) and e_sent.index(e_word):
-                f_start = min(f_sent.index(f_word), f_start)
-                f_end = max(f_sent.index(f_word), f_end)
-      BP.append(extract(f_start, f_end, e_start, e_end))
-  '''
+          for f_word in f_sent:
+            for match in tm[(f_word,)]:
+              if match.english == e_word:
+                if f_start <= f_sent.index(f_word) and f_sent.index(f_word) and (e_sent.index(e_word) < e_start or e_sent.index(e_word) > e_end):
+                  return
+      E = []
+      f_s = f_start
+
+      f_s_unaligned = True
+
+      while f_s_unaligned:
+        f_e = f_end
+        f_e_unaligned =True
+        while f_e_unaligned:
+          E.append((e_sent[e_start:e_end], f_sent[f_s: f_e]))
+          f_e += 1
+          pdb.set_trace()
+        f_s -= 1
+      return E
+
+    BP = []
+    for e_start in range(len(e_sent)):
+      for e_end in xrange(e_start, len(e_sent)):
+        f_start, f_end = len(f_sent), 0
+        for e_word in e_sent:
+          for f_word in f_sent:
+            for match in tm[(f_word,)]:
+              if match.english == e_word:
+                if e_start <= e_sent.index(e_word) and e_sent.index(e_word):
+                  f_start = min(f_sent.index(f_word), f_start)
+                  f_end = max(f_sent.index(f_word), f_end)
+        BP.append(extract(f_start, f_end, e_start, e_end))
+    '''
 
 
 
@@ -202,12 +221,11 @@ for f in french:
 
 
 
-  #TODO: play with reordering of clauses using LM
+    #TODO: play with reordering of clauses using LM
 
-  if opts.verbose:
-    def extract_tm_logprob(h):
-      return 0.0 if h.predecessor is None else h.phrase.logprob + extract_tm_logprob(h.predecessor)
-    tm_logprob = extract_tm_logprob(winner)
-    sys.stderr.write("LM = %f, TM = %f, Total = %f\n" %
-      (winner.logprob - tm_logprob, tm_logprob, winner.logprob))
-  #pdb.set_trace()
+    if opts.verbose:
+        def extract_tm_logprob(h):
+            return 0.0 if h.predecessor is None else h.phrase.logprob + extract_tm_logprob(h.predecessor)
+        tm_logprob = extract_tm_logprob(winner)
+        sys.stderr.write("LM = %f, TM = %f, Total = %f\n" %
+          (winner.logprob - tm_logprob, tm_logprob, winner.logprob))
