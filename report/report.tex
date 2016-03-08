@@ -25,10 +25,14 @@ We also implemented in such a way as to enable concurrency in the future. Becaus
 
 \section{Modifications}
 
+
+
 \section{Future Work}
 
 \begin{enumerate}
-    \item \textbf{}
+    \item \textbf{Concurrency.} As mentioned above, no arrangement of phrases is reliant on any other previous alignments, so these rearrangements can be run independently in separate threads. This would greatly improve our runtime on a high-spec machine.
+    \item \textbf{Checking more than the final hypothesis.} By reviewing more than just the baseline algorithm's best-guess, we can have more phrases at our disposal to rearrange.
+    \item \textbf{De Bruijn assembly.} Borrowing from other fields such as genomics or linguistics, we could ``build out'' our phrases into sentences using Eulerian walks across a De Bruijn graph, starting with the most-likely phrase combinations (based on the 2-grams of the last word in $p_i$ and the first word in $p_{i+1}$), and finding the maximum-cost-path to include all phrases without repeating.
 \end{enumerate}
 
 \end{document}
