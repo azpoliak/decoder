@@ -1,0 +1,34 @@
+\documentclass[a4paper]{article}
+
+\usepackage[english]{babel}
+\usepackage[utf8x]{inputenc}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage[colorinlistoftodos]{todonotes}
+
+\title{Decoding}
+\author{Adam Poliak — apoliak1 \: Jordan Matelsky — jmatels1}
+
+\begin{document}
+\maketitle
+
+\section{Implementation}
+Our implementation uses the baseline implementation to generate hypotheses of phrase-wise decodings, but makes the addition (in \texttt{./decode}) of re-implementing as a beam-search decoder, which rearranges phrases to determine the best permutation of resultant phrases. \\
+
+Start with a sentence $s$ made up of phrases $p_0, p_1, \dots, p_n$. We iterate over $p$, swapping $p_i$ and $p_{i+1}$, and picking whichever has a greater (more likely) logprob from the supplied language model. \\
+
+For instance, in the example we covered in class (the mistranslation of \textit{``un Comité de sélection a été constitué .''} to \textit{``a committee selection was achievement .''}, our model compares the n-gram frequency of $(p_i, p_{i+1})=({committee}, {selection})$ with that of $(p_i, p_{i+1})=({selection}, {committee})$, and finds that the phrase \texttt{selection committee} is more probable, with a logprob of $-0.8478742$ (whereas \texttt{committee selection} occurs not at all in the training corpus). \\
+
+We chose to implement as we did for several reasons: The phrase-rearrangement process is $O(n^2)$ for a sentence-length of $n$ phrases, and so we chose to let the initial decoder (as provided) reduce o=ur search space  by only operating on the ``best hypothesis'' returned from it. That way, $n$ is small, and the search is fast. \\
+
+We also implemented in such a way as to enable concurrency in the future. Because none of the phrase arrangements depend on any previous alignments, our implementation is easily parallelizable. \\
+
+\section{Modifications}
+
+\section{Future Work}
+
+\begin{enumerate}
+    \item \textbf{}
+\end{enumerate}
+
+\end{document}
