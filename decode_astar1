@@ -1,0 +1,165 @@
+#!/usr/bin/env python
+import optparse
+import sys, pdb
+import models
+from collections import namedtuple
+import operator
+import math
+
+
+def show_progress():
+  sys.stderr.write('.')
+
+def naive_generate_e(all_words, sent_len):
+  """
+  This approach somewhat ignores phrases after we already generated phrases
+  """
+  output = []
+  for i in range(sent_len):
+    histogram = [(t,all_words[t]) for t in all_words.keys() if t[0] == i]
+    histogram.sort(key=lambda x: x[1])
+    if histogram:
+      best = histogram.pop()
+      output.append((best[0][0], best[0][1]))
+  return output
+
+
+def smarter_generate_e(all_words, sent_len):
+  return 0
+
+
+def compress_alignments(alignments):
+  all_words = {}
+  for index, phrase in alignments:
+    words = phrase.split()
+    for i in range(len(words)):
+      if not (index + i, words[i]) in all_words:
+        all_words[(index + i, words[i])] = 0
+      all_words[(index + i, words[i])] += 1
+  return all_words
+
+
+def A_star_heuristic(hypoth):
+  """
+  Dijkstra's for now
+  """
+  return 0
+
+def is_goal(a):
+  return False
+
+diff_count = 0
+
+optparser = optparse.OptionParser()
+optparser.add_option("-i", "--input",
+                     dest="input",
+                     default="data/input",
+                     help="File containing sentences to translate (default=data/input)")
+optparser.add_option("-t", "--translation-model",
+                     dest="tm",
+                     default="data/tm",
+                     help="File containing translation model (default=data/tm)")
+optparser.add_option("-l", "--language-model",
+                     dest="lm",
+                     default="data/lm",
+                     help="File containing ARPA-format language model (default=data/lm)")
+optparser.add_option("-n", "--num_sentences",
+                     dest="num_sents", default=sys.maxint, type="int",
+                     help="Number of sentences to decode (default=no limit)")
+optparser.add_option("-k", "--translations-per-phrase",
+                     dest="k", default=1, type="int",
+                     help="Limit on number of translations to consider per phrase (default=1)")
+optparser.add_option("-s", "--stack-size",
+                     dest="s", default=1, type="int",
+                     help="Maximum stack size (default=1)")
+optparser.add_option("-v", "--verbose",
+                     dest="verbose", action="store_true", default=False,
+                     help="Verbose mode (default=off)")
+
+opts = optparser.parse_args()[0]
+
+tm = models.TM(opts.tm, opts.k)
+lm = models.LM(opts.lm)
+french = [tuple(line.strip().split()) for line in open(opts.input).readlines()[:opts.num_sents]]
+
+# tm should translate unknown words as-is with probability 1
+for word in set(sum(french,())):
+    if (word,) not in tm:
+        tm[(word,)] = [models.phrase(word, 0.0)]
+
+sys.stderr.write("Decoding %s...\n" % (opts.input,))
+for f in french:
+  output = []
+  alignments = []
+  for fw in f:
+    tmp_alignments = [(key, val) for key,val in tm.iteritems() if fw in key]
+    # scan through every word in the sentence, building for best align
+    #tmp_alignments = [(key, val) for key,val in tm.iteritems() if key[0]==fw and val.logprob > -2]
+    #tmp_alignments.sort(key=lambda x : -1 * x[1].logprob)
+    #tmp_alignments = tmp_alignments[10:]
+    alignments.extend(tmp_alignments)
+  alignments.sort(key=lambda x: x[1][0].logprob)
+  used_f_phrases = {}
+
+  f_pos = [(i, f[i]) for i in range(len(f))]
+  f_sent = " ".join(f)
+
+  while alignments:
+    best_alignment = alignments.pop()
+    while best_alignment[0] in used_f_phrases:
+        if not alignments:
+          continue
+        best_alignment = alignments.pop()
+    if " ".join(best_alignment[0]) not in f_sent:
+      continue
+    
+    fn = best_alignment[0]
+    used_f_phrases[fn] = True
+    en = best_alignment[1][0].english
+
+    en_x = {key:val for key,val in lm.table.iteritems() if en in key and en not in key and val.logprob > -2} #prune
+    
+    if not en_x: #Can't expand our phrase
+      f_align_index = len(f_sent[:f_sent.index(" ".join(best_alignment[0]))].split())
+      output.append((f_align_index, en))
+    #else:
+
+
+    '''
+    if math.fabs(len(fn) - len(en.split())) > 1:
+      continue
+
+    en_x_pre = {key:val for key,val in lm.table.iteritems() if en in key and en not in key[0] and val.logprob > -2}
+    en_x_post = {key:val for key,val in lm.table.iteritems() if en in key and en not in key[-1] and val.logprob > -2}
+    if not en_x_pre and not en_x_post: #Can't expand our phrase
+      f_align_index = len(f_sent[:f_sent.index(" ".join(best_alignment[0]))].split())
+      output.append((f_align_index, en))
+    elif not en_x_pre and en_x_post: #only look right
+      rr = 10
+      pdb.set_trace()
+    elif en_x_pre and not en_x_post: #only look left
+      ll = 10
+      pdb.set_trace()
+
+
+    else: #look left and right
+      lr = 20
+      pdb.set_trace()
+  '''
+
+
+  all_words = compress_alignments(output)
+
+  show_progress()
+
+  english = naive_generate_e(all_words, len(f))
+  #english = smarter_generate_e(all_words, len(f))
+
+  e_sent = ""
+  for i in range(len(f)-1, -1, -1):
+    if english[:-1][0] == i:
+      e_sent = english.pop()[0] + " " + e_sent
+    else:
+      e_sent = tm[(f[i],)][0].english + " " + e_sent
+
+  print e_sent
