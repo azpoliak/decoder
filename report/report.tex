@@ -15,7 +15,7 @@
 \section{Implementation}
 Our implementation uses the baseline implementation to generate hypotheses of phrase-wise decodings, but makes the addition (in \texttt{./decode}) of re-implementing as a beam-search decoder, which rearranges phrases to determine the best permutation of resultant phrases. \\
 
-Start with a sentence $s$ made up of phrases $p_0, p_1, \dots, p_n$. We iterate over $p$, swapping $p_i$ and $p_{i+1}$, and picking whichever has a greater (more likely) logprob from the supplied language model. \\
+We follow the following algorithm (loosely defined here, but coded in \texttt{./decode} and available in the GitHub repository): Start with a sentence $s$ made up of phrases $p_0, p_1, \dots, p_n$. We iterate over $p$, swapping $p_i$ and $p_{i+1}$, and picking whichever has a greater (more likely) logprob from the supplied language model. \\
 
 For instance, in the example we covered in class (the mistranslation of \textit{``un Comité de sélection a été constitué .''} to \textit{``a committee selection was achievement .''}, our model compares the n-gram frequency of $(p_i, p_{i+1})=({committee}, {selection})$ with that of $(p_i, p_{i+1})=({selection}, {committee})$, and finds that the phrase \texttt{selection committee} is more probable, with a logprob of $-0.8478742$ (whereas \texttt{committee selection} occurs not at all in the training corpus). \\
 
@@ -23,8 +23,30 @@ We chose to implement as we did for several reasons: The phrase-rearrangement pr
 
 We also implemented in such a way as to enable concurrency in the future. Because none of the phrase arrangements depend on any previous alignments, our implementation is easily parallelizable. \\
 
-\section{Modifications}
+\section{Word-wise Hypothesis Expansion and Consensus}
 
+Borrowing from the heuristic defined in $\textit{Och, Ueffing, and Ney}$ (2001), we developed an algorithm for expanding sentences from single words, selecting from a cohort of most-likely next- or previous- phrases in an n-gram language-model.
+
+We define our heuristic as follows:
+
+$\textbf{Heuristic}$: Defined in $\texttt{a\_star\_heuristic}$ in $decode\_astar$. Heuristic takes in a complete hypothesis node as an argument, ``chopping off'' the history prior to a single parent node, as is implemented as $\texttt{decode\_astar}$. This phrase, $e_{0..j}$, is added to a temporary model, against which all n-grams from the language model table \textit{starting} with $e_{0}$, unioned with all those \textit{ending} with $e_{j}$, are compared.
+
+The most likely candidates (we threshold at $\mathtt{logprob} > -2$, which is discussed further in \textbf{Future Work}) are retained, and their neighbors are then checked. \\
+
+We then use a (currently naïve) approach to generate a word-by-word translation, using consensus over the aligned phrases. That is, given the alignment set $A$, where individual alignments are tuples $a \in A; = (i, [phrase, ])$, where $i$ is the start index of our word, and $(phrase, ))$ is a list containing all words that are aligned. \\
+
+For example, the sentence "The quick brown fox" might have alignments $(0, [the, quick]), (1, [quick])$, and so on.
+
+Our naïve approach takes consensus at each index in the sentence $s$, performing the following:
+
+$$\displaystyle s_i = [a_{phrase}[s_i - a_i]] \forall a \in A$$
+
+This returns an array of candidate words for each index position in the sentence. From this, we can take a simple consensus, selecting for $s_i$ the word that most commonly is aligned to that index. In cases of ties, we currently select the first encountered word, though this could easily be improved as described below.
+
+We could further improve this using the log-probs of the occurrences of the words we are inserting at each step to further weight our decision as to which word to use, especially in cases of ties.
+
+\subsection{Results of Alternate Aligner}
+Interestingly, this alternate implementation yields more semantically meaningful phrases (``\textit{a committee of selection}'' instead of \textit{committee selection}) than the baseline implementation. However, the grading favors the ground-truth translations, so while this algorithm returns highly readable sentences, they are scored less favorably than our beam-search decoder, above.
 
 
 \section{Future Work}
@@ -33,6 +55,7 @@ We also implemented in such a way as to enable concurrency in the future. Becaus
     \item \textbf{Concurrency.} As mentioned above, no arrangement of phrases is reliant on any other previous alignments, so these rearrangements can be run independently in separate threads. This would greatly improve our runtime on a high-spec machine.
     \item \textbf{Checking more than the final hypothesis.} By reviewing more than just the baseline algorithm's best-guess, we can have more phrases at our disposal to rearrange.
     \item \textbf{De Bruijn assembly.} Borrowing from other fields such as genomics or linguistics, we could ``build out'' our phrases into sentences using Eulerian walks across a De Bruijn graph, starting with the most-likely phrase combinations (based on the 2-grams of the last word in $p_i$ and the first word in $p_{i+1}$), and finding the maximum-cost-path to include all phrases without repeating.
+    \item \textbf{Better alignment algorithm.} The alignment algorithm we describe above is naïve, and leaves much to be desired in the way of predicting good alignments for complex grammars, or long sentences. We could greatly improve its output by aligning phrases to each other (NP-hard), along the lines of a genomic assembly, and \textit{then} align to indices in the sentence. This eliminates the `diagonalization' phenomenon (when sentences can be translated 1-to-1) but increases the likelihood of encountering loops in alignments, especially in cases where sentences have duplicate phrases in two different locations.
 \end{enumerate}
 
 \end{document}
